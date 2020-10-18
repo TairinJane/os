@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <fcntl.h>
 #include <pthread.h>
 
 #define URANDOM "/dev/urandom"
@@ -30,13 +29,10 @@ void *thread_write_to_heap(void *thread_data) {
     return NULL;
 }
 
-int count = 10;
-
 int main() {
     int *heap_area = (int *) malloc(A * 1024 * 1024);
     ulong chunk_size = A * 1024 * 1024 / D;
     ulong ints_in_chunk = chunk_size / sizeof(int);
-//    int *heap_area = (int *) malloc(count * sizeof(int));
     printf("Addr: %d\n", heap_area);
     printf("Size of int: %lu\n", sizeof(int));
     printf("A / D = %d mb in chunk\n", A / D);
@@ -48,10 +44,6 @@ int main() {
     threadData *threadsData = (threadData *) malloc(D * sizeof(threadData));
 
     for (int i = 0; i < D; ++i) {
-//        fread(&heap_area[i], sizeof(int), 1, urandom_p);
-//        write_to_heap(heap_area, i, 1, urandom_p);
-//        printf("Heap[%i] = %i\n ", i, heap_area[i]);
-        threadsData[i].start_i = i * ints_in_chunk;
         threadsData[i].count = ints_in_chunk;
         threadsData[i].file_pointer = urandom_p;
         threadsData[i].heap = heap_area;
