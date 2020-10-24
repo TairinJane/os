@@ -11,30 +11,31 @@
 #define HEAP_FILE "heap_file"
 
 int file_size = E * 1024 * 1024;
+char *heap_area;
+ulong chunk_size = A * 1024 * 1024 / D;
+FILE *urandom_p;
+
 pthread_mutex_t mutex;
 pthread_cond_t condition;
 int isFree = 1;
 
 typedef struct {
     ulong start_i;
-    int count;
-    int *heap;
-    FILE *file_pointer;
 } threadData;
 
-void write_to_heap(int *heap, ulong start, int count, FILE *fs) {
-    fread(&heap[start], sizeof(int), count, fs);
+void write_to_heap(char *heap, ulong start, int count, FILE *fs) {
+    fread(&heap[start], sizeof(char), count, fs);
 //    printf("Write Heap[%lu] = %d\n", start, heap[start]);
 }
 
 void *thread_write_to_heap(void *thread_data) {
-    threadData *data = (threadData *) thread_data;
+    ulong *start = (ulong *) thread_data;
 //    printf("Thread start %lu\n", data->start_i);
-    write_to_heap(data->heap, data->start_i, data->count, data->file_pointer);
+    write_to_heap(heap_area, start, chunk_size, urandom_p);
     return NULL;
 }
 
-void *sum_from_file(void *thread_data) {
+void *sum_from_file() {
     pthread_mutex_lock(&mutex);
     while (isFree != 1) pthread_cond_wait(&condition, &mutex);
     isFree = 0;
@@ -65,8 +66,7 @@ void write_to_file(int *heap, int int_count) {
 }
 
 int main() {
-    int *heap_area = (int *) malloc(A * 1024 * 1024);
-    ulong chunk_size = A * 1024 * 1024 / D;
+    heap_area = (char *) malloc(A * 1024 * 1024);
     ulong ints_in_chunk = chunk_size / sizeof(int);
 
     printf("Heap Addr: %p\n", heap_area);
@@ -75,17 +75,12 @@ int main() {
     printf("chunk size = %lu bytes\n", chunk_size);
     printf("ints in chunk = %lu\n", ints_in_chunk);
 
-    FILE *urandom_p = fopen(URANDOM, "r");
+    urandom_p = fopen(URANDOM, "r");
 
     pthread_t *threads = (pthread_t *) malloc(D * sizeof(pthread_t));
-    threadData *threadsData = (threadData *) malloc(D * sizeof(threadData));
 
     for (int i = 0; i < D; ++i) {
-        threadsData[i].start_i = ints_in_chunk * i;
-        threadsData[i].count = ints_in_chunk;
-        threadsData[i].file_pointer = urandom_p;
-        threadsData[i].heap = heap_area;
-        pthread_create(&threads[i], NULL, thread_write_to_heap, &threadsData[i]);
+        pthread_create(&threads[i], NULL, thread_write_to_heap, (void *) (chunk_size * i));
     }
 
     for (int i = 0; i < D; ++i) {
@@ -113,6 +108,5 @@ int main() {
 
     free(heap_area);
     free(threads);
-    free(threadsData);
     return 0;
 }
