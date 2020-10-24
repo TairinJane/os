@@ -10,6 +10,7 @@
 #define G 108
 #define HEAP_FILE "heap_file"
 
+//TODO: uncomment file size
 int file_size = E * 1024; //E * 1024 * 1024
 char *heap_area;
 ulong chunk_size = A * 1024 * 1024 / D;
@@ -21,18 +22,8 @@ pthread_cond_t condition;
 int can_write = 1;
 int file_position = 0;
 
-typedef struct {
-    ulong start_i;
-} threadData;
-
-void write_to_heap(char *heap, ulong start, int count, FILE *fs) {
-    fread(&heap[start], sizeof(char), count, fs);
-//    printf("Write Heap[%lu] = %d\n", start, heap[start]);
-}
-
 void *thread_write_to_heap(void *thread_data) {
     ulong start = (ulong) thread_data;
-//    printf("Thread start %lu\n", data->start_i);
     fread(&heap_area[start], sizeof(char), chunk_size, urandom_p);
     return NULL;
 }
@@ -46,8 +37,9 @@ void *sum_from_file() {
             fread(&next_int, sizeof(int), 1, sum_file);
             sum += next_int;
         }
-        printf("Sum in file = %lu\n", sum);
+//        printf("Sum in file = %lu\n", sum);
     } else printf("Error reading %s", HEAP_FILE);
+    fclose(sum_file);
     return NULL;
 }
 
@@ -57,10 +49,8 @@ void *write_chunk_to_file() {
         while (can_write != 1) pthread_cond_wait(&condition, &mutex);
         can_write = 0;
         if (heap_file != NULL) {
-            printf("Start chunk write\n");
             fwrite(heap_area, sizeof(char), G, heap_file);
             file_position += G;
-            printf("End chunk write = %d\n", file_position);
         } else printf("Error open heap_file");
         can_write = 1;
         pthread_cond_signal(&condition);
@@ -70,56 +60,60 @@ void *write_chunk_to_file() {
 }
 
 int main() {
-    heap_area = (char *) malloc(A * 1024 * 1024);
-    ulong ints_in_chunk = chunk_size / sizeof(int);
+    while (1) {
+        heap_area = (char *) malloc(A * 1024 * 1024);
 
-    printf("Heap Addr: %p\n", heap_area);
-    printf("Wanted size: %d\n", A * 1024 * 1024);
-    printf("A / D = %d mb in chunk\n", A / D);
-    printf("chunk size = %lu bytes\n", chunk_size);
-    printf("ints in chunk = %lu\n", ints_in_chunk);
+        printf("Heap Addr: %p\n", heap_area);
 
-    urandom_p = fopen(URANDOM, "r");
+        urandom_p = fopen(URANDOM, "r");
 
-    pthread_t *threads = (pthread_t *) malloc(D * sizeof(pthread_t));
+        if (urandom_p != NULL) {
 
-    for (int i = 0; i < D; ++i) {
-        pthread_create(&threads[i], NULL, thread_write_to_heap, (void *) (chunk_size * i));
+            pthread_t *threads = (pthread_t *) malloc(D * sizeof(pthread_t));
+
+            for (int i = 0; i < D; ++i) {
+                pthread_create(&threads[i], NULL, thread_write_to_heap, (void *) (chunk_size * i));
+            }
+
+            for (int i = 0; i < D; ++i) {
+                pthread_join(threads[i], NULL);
+            }
+
+            heap_file = fopen(HEAP_FILE, "w+");
+
+            if (heap_file != NULL) {
+                file_position = 0;
+                can_write = 1;
+
+                for (int i = 0; i < D; ++i) {
+                    pthread_create(&threads[i], NULL, write_chunk_to_file, NULL);
+                }
+
+                for (int i = 0; i < D; ++i) {
+                    pthread_join(threads[i], NULL);
+                }
+
+                printf("End file write\n");
+                free(heap_area);
+
+                pthread_t *threads_sum = (pthread_t *) malloc(I * sizeof(pthread_t));
+
+                for (int i = 0; i < I; ++i) {
+                    pthread_create(&(threads_sum[i]), NULL, sum_from_file, NULL);
+                }
+
+                for (int i = 0; i < I; ++i) {
+                    pthread_join(threads_sum[i], NULL);
+                }
+
+                free(threads_sum);
+
+            } else printf("Can't write heap_file");
+
+            fclose(heap_file);
+            fclose(urandom_p);
+            free(threads);
+        }
     }
-
-    for (int i = 0; i < D; ++i) {
-        pthread_join(threads[i], NULL);
-    }
-
-    heap_file = fopen(HEAP_FILE, "w+");
-
-    if (heap_file != NULL) {
-        printf("Start file write\n");
-
-        for (int i = 0; i < D; ++i) {
-            pthread_create(&threads[i], NULL, write_chunk_to_file,  NULL);
-        }
-
-        for (int i = 0; i < D; ++i) {
-            pthread_join(threads[i], NULL);
-        }
-
-//        fwrite(heap_area, sizeof(char), file_size, heap_file);
-        printf("End file write\n");
-
-        pthread_t *threads_sum = (pthread_t *) malloc(I * sizeof(pthread_t));
-
-        for (int i = 0; i < I; ++i) {
-            pthread_create(&(threads_sum[i]), NULL, sum_from_file, NULL);
-        }
-
-        for (int i = 0; i < I; ++i) {
-            pthread_join(threads_sum[i], NULL);
-        }
-
-    } else printf("Can't write heap_file");
-
-    free(heap_area);
-    free(threads);
     return 0;
 }
